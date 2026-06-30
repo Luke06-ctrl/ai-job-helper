@@ -1,6 +1,8 @@
 """职途星 — AI 大学生就业助手"""
 
 from flask import Flask, render_template, request, jsonify, Response, session
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from config import SECRET_KEY, DEBUG
 from utils.deepseek import chat, chat_stream
 from prompts.resume import build_messages as resume_build
@@ -14,6 +16,19 @@ import json
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+# 请求频率限制（防刷 API 额度）
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["30 per minute"],  # 全局默认
+    storage_uri="memory://",
+)
+
+
+@app.errorhandler(429)
+def ratelimit_error(e):
+    return jsonify({"error": "请求太频繁，请稍后再试"}), 429
 
 
 # ═══════════════ 页面路由 ═══════════════
@@ -45,6 +60,7 @@ def career_page():
 # ═══════════════ API 路由 ═══════════════
 
 @app.route("/api/resume/analyze", methods=["POST"])
+@limiter.limit("3 per minute")
 def api_resume_analyze():
     """简历优化 API"""
     data = request.get_json()
@@ -62,6 +78,7 @@ def api_resume_analyze():
 
 
 @app.route("/api/interview/start", methods=["POST"])
+@limiter.limit("3 per minute")
 def api_interview_start():
     """面试开始 API"""
     data = request.get_json()
@@ -90,6 +107,7 @@ def api_interview_start():
 
 
 @app.route("/api/interview/answer", methods=["POST"])
+@limiter.limit("10 per minute")
 def api_interview_answer():
     """面试回答 API"""
     data = request.get_json()
@@ -169,6 +187,7 @@ def api_interview_answer():
 
 
 @app.route("/api/career/chat", methods=["POST"])
+@limiter.limit("5 per minute")
 def api_career_chat():
     """职业规划问答 API"""
     data = request.get_json()
@@ -184,6 +203,7 @@ def api_career_chat():
 
 
 @app.route("/api/career/chat/stream", methods=["POST"])
+@limiter.limit("5 per minute")
 def api_career_chat_stream():
     """职业规划问答 API（流式）"""
     data = request.get_json()
