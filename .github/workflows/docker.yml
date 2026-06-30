@@ -4,6 +4,10 @@ on:
   push:
     branches: [master]
 
+permissions:
+  packages: write
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,3 +27,11 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/luke06-ctrl/ai-job-helper:latest
+
+      - name: Make package public
+        run: |
+          curl -s -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/user/packages/container/ai-job-helper/visibility \
+            -d '{"visibility":"public"}'
