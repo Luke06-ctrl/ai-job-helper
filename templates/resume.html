@@ -48,9 +48,14 @@
                     rows="15"></textarea>
                 <div class="char-count"><span id="charCount">0</span> 字</div>
             </div>
-            <button id="analyzeBtn" class="btn btn-primary btn-block">
-                🔍 开始分析
-            </button>
+            <div class="btn-row">
+                <button id="analyzeBtn" class="btn btn-primary btn-block">
+                    🔍 开始分析
+                </button>
+                <button id="exportBtn" class="btn btn-outline btn-block" style="display:none;">
+                    📥 导出 Word
+                </button>
+            </div>
         </div>
 
         <!-- 右侧结果区 -->
@@ -83,10 +88,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const textarea = document.getElementById('resumeContent');
     const charCount = document.getElementById('charCount');
     const analyzeBtn = document.getElementById('analyzeBtn');
+    const exportBtn = document.getElementById('exportBtn');
     const resultPlaceholder = document.getElementById('resultPlaceholder');
     const resultContent = document.getElementById('resultContent');
     const resultLoading = document.getElementById('resultLoading');
     const resultError = document.getElementById('resultError');
+    let lastResumeContent = '';
+    let lastTargetJob = '';
 
     // 字数统计
     textarea.addEventListener('input', function() {
@@ -165,6 +173,8 @@ document.addEventListener('DOMContentLoaded', function() {
     analyzeBtn.addEventListener('click', async function() {
         const content = textarea.value.trim();
         const targetJob = document.getElementById('targetJob').value.trim();
+        lastResumeContent = content;
+        lastTargetJob = targetJob;
 
         if (!content) {
             showError('请粘贴简历内容或上传文件');
@@ -199,11 +209,46 @@ document.addEventListener('DOMContentLoaded', function() {
         analyzeBtn.disabled = false;
     });
 
+    // 导出 Word
+    exportBtn.addEventListener('click', async function() {
+        if (!lastResumeContent) return;
+        exportBtn.disabled = true;
+        exportBtn.textContent = '⏳ 生成中...';
+
+        try {
+            const resp = await fetch('/api/resume/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: lastResumeContent, target_job: lastTargetJob })
+            });
+            if (!resp.ok) {
+                const err = await resp.json();
+                showError(err.error || '导出失败');
+                exportBtn.disabled = false;
+                exportBtn.textContent = '📥 导出 Word';
+                return;
+            }
+            const blob = await resp.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '简历优化_职途星.docx';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch (e) {
+            showError('导出失败：' + e.message);
+        }
+
+        exportBtn.disabled = false;
+        exportBtn.textContent = '📥 导出 Word';
+    });
+
     function setState(state) {
         resultPlaceholder.style.display = state === 'placeholder' ? 'flex' : 'none';
         resultLoading.style.display = state === 'loading' ? 'flex' : 'none';
         resultContent.style.display = state === 'result' ? 'block' : 'none';
         resultError.style.display = 'none';
+        exportBtn.style.display = state === 'result' ? 'inline-flex' : 'none';
     }
 
     function showError(msg) {

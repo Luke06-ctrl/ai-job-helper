@@ -37,10 +37,14 @@
             <div id="chatMessages" class="chat-messages"></div>
             <div class="chat-input-area">
                 <textarea id="answerInput"
-                    placeholder="输入你的回答..."
+                    placeholder="输入你的回答，或点击🎤语音输入..."
                     rows="3"
                     disabled></textarea>
                 <div class="chat-actions">
+                    <button id="voiceBtn" class="btn btn-outline btn-sm" title="语音输入">
+                        🎤
+                    </button>
+                    <span id="voiceStatus" class="voice-status" style="display:none;">🔴 录音中...</span>
                     <button id="submitAnswerBtn" class="btn btn-primary" disabled>发送回答</button>
                     <button id="endInterviewBtn" class="btn btn-outline">结束面试</button>
                 </div>
@@ -50,7 +54,13 @@
         <!-- 评价报告区 -->
         <div id="interviewReport" class="interview-report" style="display:none;">
             <div id="reportContent" class="result-content markdown-body"></div>
-            <button id="restartBtn" class="btn btn-primary">🔄 重新开始</button>
+            <div id="saveResult" class="save-result" style="display:none;">
+                <span id="saveStatus"></span>
+            </div>
+            <div class="btn-row">
+                <button id="saveHistoryBtn" class="btn btn-outline">💾 保存记录</button>
+                <button id="restartBtn" class="btn btn-primary">🔄 重新开始</button>
+            </div>
         </div>
     </div>
 </div>
@@ -122,7 +132,96 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('chatMessages').innerHTML = '';
         document.getElementById('startInterviewBtn').disabled = false;
         document.getElementById('startInterviewBtn').textContent = '🚀 开始面试';
+        document.getElementById('saveResult').style.display = 'none';
         currentRound = 0;
+    });
+
+    // 🎤 语音输入
+    let isRecording = false;
+    let recognition = null;
+    const voiceBtn = document.getElementById('voiceBtn');
+    const voiceStatus = document.getElementById('voiceStatus');
+
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SR();
+        recognition.lang = 'zh-CN';
+        recognition.interimResults = true;
+        recognition.continuous = true;
+
+        recognition.onresult = function(e) {
+            let transcript = '';
+            for (let i = e.resultIndex; i < e.results.length; i++) {
+                transcript += e.results[i][0].transcript;
+            }
+            document.getElementById('answerInput').value = transcript;
+        };
+
+        recognition.onerror = function(e) {
+            if (e.error === 'not-allowed') {
+                alert('请允许麦克风权限后使用语音输入');
+            }
+            stopRecording();
+        };
+
+        recognition.onend = function() {
+            if (isRecording) recognition.start(); // 保持持续监听
+        };
+
+        voiceBtn.addEventListener('click', function() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        });
+    } else {
+        voiceBtn.style.display = 'none';
+    }
+
+    function startRecording() {
+        try {
+            recognition.start();
+            isRecording = true;
+            voiceBtn.textContent = '🔴';
+            voiceBtn.classList.add('recording');
+            voiceStatus.style.display = 'inline';
+        } catch(e) {}
+    }
+
+    function stopRecording() {
+        recognition.stop();
+        isRecording = false;
+        voiceBtn.textContent = '🎤';
+        voiceBtn.classList.remove('recording');
+        voiceStatus.style.display = 'none';
+    }
+
+    // 💾 保存面试记录
+    let lastReportContent = '';
+    document.getElementById('saveHistoryBtn').addEventListener('click', async function() {
+        if (!lastReportContent) return;
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = '⏳ 保存中...';
+
+        try {
+            const resp = await fetch('/api/interview/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    job_type: selectedType,
+                    report: lastReportContent
+                })
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                document.getElementById('saveStatus').textContent = '✅ 已保存（可在历史记录中查看）';
+                document.getElementById('saveResult').style.display = 'block';
+            }
+        } catch(e) {}
+        btn.disabled = false;
+        btn.textContent = '💾 保存记录';
     });
 
     async function sendAnswer() {
@@ -149,6 +248,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('interviewChat').style.display = 'none';
                 document.getElementById('interviewReport').style.display = 'block';
                 document.getElementById('reportContent').innerHTML = marked.parse(data.result);
+                lastReportContent = data.result;
+                document.getElementById('saveHistoryBtn').style.display = 'inline-flex';
             } else {
                 addMessage('ai', data.result);
                 document.getElementById('interviewRound').textContent = '第 ' + data.round + ' 轮';

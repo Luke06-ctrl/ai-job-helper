@@ -1,13 +1,18 @@
 """职途星 — AI 大学生就业助手"""
 
 import base64
+import datetime
 import io
 import json
+import os
+import uuid
 
-from flask import Flask, render_template, request, jsonify, Response, session
+from flask import Flask, render_template, request, jsonify, Response, session, send_file
 from flask_limiter import Limiter
 from PyPDF2 import PdfReader
 from docx import Document
+from docx.shared import Pt, Inches, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from config import SECRET_KEY, DEBUG
 from utils.deepseek import chat, chat_stream, ocr_image
@@ -296,6 +301,155 @@ def api_career_chat_stream():
         yield "data: [DONE]\n\n"
 
     return Response(generate(), mimetype="text/event-stream")
+
+
+# ═══════════════ 导出 Word 简历 ═══════════════
+
+@app.route("/api/resume/export", methods=["POST"])
+@limiter.limit("3 per minute")
+def api_resume_export():
+    """将优化内容导出为 Word 文档"""
+    data = request.get_json()
+    resume_text = data.get("content", "").strip()
+    target_job = data.get("target_job", "").strip()
+
+    if not resume_text:
+        return jsonify({"error": "请输入简历内容"}), 400
+
+    doc = Document()
+    # 页面设置
+    section = doc.sections[0]
+    section.page_margin_top = Cm(2)
+    section.page_margin_bottom = Cm(2)
+    section.page_margin_left = Cm(2.5)
+    section.page_margin_right = Cm(2.5)
+
+    # 标题
+    title = doc.add_heading("个人简历", level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    if target_job:
+        subtitle = doc.add_paragraph()
+        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = subtitle.add_run(f"目标岗位：{target_job}")
+        run.font.size = Pt(11)
+        run.font.color.rgb = None
+
+    doc.add_paragraph()  # 空行
+
+    # 解析简历内容并结构化
+    lines = resume_text.strip().split("\n")
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # 检测标题行（包含冒号或关键词）
+        if "：" in line or ":" in line or any(kw in line for kw in ["信息", "教育", "经历", "实习", "项目", "技能", "证书", "荣誉", "自我"]):
+            p = doc.add_heading(line, level=2)
+        else:
+            p = doc.add_paragraph(line)
+            p.style.font.size = Pt(10.5)
+
+    # 页脚
+    doc.add_paragraph()
+    footer_p = doc.add_paragraph()
+    footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = footer_p.add_run("— 本简历由 职途星 AI 助手优化生成 —")
+    run.font.size = Pt(8)
+    run.font.color.rgb = None
+
+    # 返回 Word 文件
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+
+    filename = "简历优化_职途星.docx"
+    if target_job:
+        filename = f"简历_{target_job}_职途星.docx"
+
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
+# ═══════════════ 面试历史记录 ═══════════════
+
+HISTORY_DIR = os.path.join(os.path.dirname(__file__), "data")
+os.makedirs(HISTORY_DIR, exist_ok=True)
+
+
+def _save_history(record):
+    """保存面试记录到 JSON 文件"""
+    rid = uuid.uuid4().hex[:8]
+    record["id"] = rid
+    record["time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    path = os.path.join(HISTORY_DIR, f"{rid}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(record, f, ensure_ascii=False, indent=2)
+    return rid
+
+
+def _load_all_history():
+    """加载所有面试历史"""
+    records = []
+    for fname in os.listdir(HISTORY_DIR):
+        if fname.endswith(".json"):
+            path = os.path.join(HISTORY_DIR, fname)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    records.append(json.load(f))
+            except Exception:
+                pass
+    records.sort(key=lambda r: r.get("time", ""), reverse=True)
+    return records
+
+
+@app.route("/history")
+def history_page():
+    """面试历史页"""
+    records = _load_all_history()
+    return render_template("history.html", records=records, types=INTERVIEW_TYPES)
+
+
+@app.route("/api/interview/save", methods=["POST"])
+@limiter.limit("5 per minute")
+def api_interview_save():
+    """保存面试结果"""
+    data = request.get_json()
+    job_type = data.get("job_type", "general")
+    report = data.get("report", "")
+    feedback = data.get("feedback", "")
+
+    if not report:
+        return jsonify({"error": "缺少面试报告"}), 400
+
+    record = {
+        "job_type": job_type,
+        "job_name": INTERVIEW_TYPES.get(job_type, {}).get("name", job_type),
+        "report": report,
+        "feedback": feedback,
+    }
+    rid = _save_history(record)
+    return jsonify({"id": rid, "ok": True})
+
+
+@app.route("/api/history/list", methods=["GET"])
+def api_history_list():
+    """获取历史记录列表"""
+    return jsonify(_load_all_history())
+
+
+@app.route("/api/history/<hid>", methods=["GET"])
+def api_history_detail(hid):
+    """获取单条面试历史"""
+    path = os.path.join(HISTORY_DIR, f"{hid}.json")
+    if not os.path.exists(path):
+        return jsonify({"error": "记录不存在"}), 404
+    with open(path, "r", encoding="utf-8") as f:
+        return jsonify(json.load(f))
 
 
 # ═══════════════ 启动入口 ═══════════════

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}面试历史 — 职途星{% endblock %}
+
+{% block content %}
+<div class="container page-container">
+    <div class="page-header">
+        <h1>📋 面试历史记录</h1>
+        <p>回顾过往的模拟面试评价，追踪自己的进步轨迹</p>
+    </div>
+
+    {% if records %}
+    <div class="history-list">
+        {% for r in records %}
+        <div class="history-card" onclick="toggleDetail('{{ r.id }}')">
+            <div class="history-card-header">
+                <span class="history-job">{{ r.job_name }}</span>
+                <span class="history-time">{{ r.time }}</span>
+            </div>
+            <div id="detail-{{ r.id }}" class="history-detail markdown-body" style="display:none;"></div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="result-placeholder" style="display:flex; flex-direction:column; align-items:center; padding:60px;">
+        <div class="placeholder-icon">📭</div>
+        <p style="color:var(--text-secondary);">还没有面试记录</p>
+        <a href="/interview" class="btn btn-primary" style="margin-top:16px;">去模拟面试 →</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function toggleDetail(hid) {
+    const el = document.getElementById('detail-' + hid);
+    if (el.style.display === 'none') {
+        // 加载详情
+        if (!el.dataset.loaded) {
+            el.innerHTML = '<div class="spinner"></div>';
+            try {
+                const resp = await fetch('/api/history/' + hid);
+                const data = await resp.json();
+                if (data.report) {
+                    el.innerHTML = marked.parse(data.report);
+                }
+                el.dataset.loaded = '1';
+            } catch(e) {
+                el.innerHTML = '<p>加载失败</p>';
+            }
+        }
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}
