@@ -6,7 +6,7 @@
 <div class="container page-container">
     <div class="page-header">
         <h1>📝 智能简历优化</h1>
-        <p>粘贴你的简历内容，AI 资深 HR 专家为你提供全方位优化建议</p>
+        <p>粘贴内容或上传文件，AI 资深 HR 专家为你提供全方位优化建议</p>
     </div>
 
     <div class="resume-grid">
@@ -16,17 +16,36 @@
                 <label for="targetJob">目标岗位 <span class="optional">（选填）</span></label>
                 <input type="text" id="targetJob" placeholder="如：前端开发工程师、市场营销专员">
             </div>
+
+            <!-- 文件上传区 -->
+            <div class="form-group">
+                <label>📎 上传简历文件</label>
+                <div id="uploadZone" class="upload-zone">
+                    <div class="upload-icon">📂</div>
+                    <p>点击上传或拖拽文件到此处</p>
+                    <p class="upload-hint">支持 PDF / Word / TXT / 图片</p>
+                    <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.bmp" hidden>
+                    <div id="uploadProgress" class="upload-progress" style="display:none;">
+                        <div class="spinner"></div>
+                        <span id="uploadStatus">正在识别...</span>
+                    </div>
+                    <div id="uploadDone" class="upload-done" style="display:none;">
+                        ✅ <span id="uploadFilename"></span> 识别完成（<span id="uploadChars">0</span>字）
+                    </div>
+                </div>
+            </div>
+
             <div class="form-group">
                 <label for="resumeContent">简历内容 <span class="required">*</span></label>
                 <textarea id="resumeContent"
-                    placeholder="请粘贴你的简历内容（至少50字）...
+                    placeholder="粘贴简历内容，或上传文件自动填充...
 
 示例格式：
 基本信息：张三 | 1999年 | 暨南大学 | 计算机科学 | 本科
 实习经历：2025.6-2025.9 在XX公司担任XX实习生，负责...
 项目经历：参与XX项目，使用Python+Flask开发了...
 技能证书：Python、SQL、英语六级..."
-                    rows="18"></textarea>
+                    rows="15"></textarea>
                 <div class="char-count"><span id="charCount">0</span> 字</div>
             </div>
             <button id="analyzeBtn" class="btn btn-primary btn-block">
@@ -54,6 +73,13 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const uploadProgress = document.getElementById('uploadProgress');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const uploadDone = document.getElementById('uploadDone');
+    const uploadFilename = document.getElementById('uploadFilename');
+    const uploadChars = document.getElementById('uploadChars');
     const textarea = document.getElementById('resumeContent');
     const charCount = document.getElementById('charCount');
     const analyzeBtn = document.getElementById('analyzeBtn');
@@ -67,13 +93,81 @@ document.addEventListener('DOMContentLoaded', function() {
         charCount.textContent = this.value.length;
     });
 
+    // 点击上传区域
+    uploadZone.addEventListener('click', function(e) {
+        if (uploadProgress.style.display === 'flex') return;
+        fileInput.click();
+    });
+
+    // 拖拽上传
+    uploadZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('dragover');
+    });
+    uploadZone.addEventListener('dragleave', function() {
+        this.classList.remove('dragover');
+    });
+    uploadZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            handleFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    // 文件选择
+    fileInput.addEventListener('change', function() {
+        if (this.files.length) {
+            handleFile(this.files[0]);
+        }
+    });
+
+    // 处理文件上传
+    async function handleFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // 显示进度
+        uploadProgress.style.display = 'flex';
+        uploadDone.style.display = 'none';
+        const isImage = file.name.match(/\.(png|jpg|jpeg|webp|bmp)$/i);
+        uploadStatus.textContent = isImage ? '正在 OCR 识别图片...' : '正在提取文件内容...';
+
+        try {
+            const resp = await fetch('/api/resume/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+
+            uploadProgress.style.display = 'none';
+
+            if (data.error) {
+                showError(data.error);
+                return;
+            }
+
+            // 填充到文本框
+            textarea.value = data.content;
+            charCount.textContent = data.content.length;
+            uploadFilename.textContent = data.filename || file.name;
+            uploadChars.textContent = data.content.length;
+            uploadDone.style.display = 'block';
+            resultError.style.display = 'none';
+
+        } catch (e) {
+            uploadProgress.style.display = 'none';
+            showError('文件处理失败：' + e.message);
+        }
+    }
+
     // 分析按钮
     analyzeBtn.addEventListener('click', async function() {
         const content = textarea.value.trim();
         const targetJob = document.getElementById('targetJob').value.trim();
 
         if (!content) {
-            showError('请输入简历内容');
+            showError('请粘贴简历内容或上传文件');
             return;
         }
         if (content.length < 50) {
@@ -81,7 +175,6 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // 显示加载状态
         setState('loading');
         analyzeBtn.disabled = true;
 

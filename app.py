@@ -1,9 +1,16 @@
 """职途星 — AI 大学生就业助手"""
 
+import base64
+import io
+import json
+
 from flask import Flask, render_template, request, jsonify, Response, session
 from flask_limiter import Limiter
+from PyPDF2 import PdfReader
+from docx import Document
+
 from config import SECRET_KEY, DEBUG
-from utils.deepseek import chat, chat_stream
+from utils.deepseek import chat, chat_stream, ocr_image
 from prompts.resume import build_messages as resume_build
 from prompts.interview import (
     build_start_message,
@@ -11,7 +18,6 @@ from prompts.interview import (
     INTERVIEW_TYPES,
 )
 from prompts.career import build_messages as career_build, PRESET_QUESTIONS
-import json
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -83,6 +89,67 @@ def api_resume_analyze():
     messages = resume_build(resume_text, target_job)
     result = chat(messages, temperature=0.6)
     return jsonify({"result": result})
+
+
+@app.route("/api/resume/upload", methods=["POST"])
+@limiter.limit("3 per minute")
+def api_resume_upload():
+    """文件上传 + 图片 OCR 提取"""
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "请选择文件"}), 400
+
+    filename = file.filename.lower()
+    content = ""
+
+    try:
+        # 图片文件 → OCR 识别
+        if filename.endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
+            raw = file.read()
+            img_b64 = base64.b64encode(raw).decode("utf-8")
+            mime = "image/" + ("jpeg" if filename.endswith(".jpg") or filename.endswith(".jpeg") else filename.split(".")[-1])
+            if filename.endswith(".webp"):
+                mime = "image/webp"
+            elif filename.endswith(".bmp"):
+                mime = "image/bmp"
+            content = ocr_image(img_b64, mime)
+            if content.startswith("[OCR错误]"):
+                return jsonify({"error": content}), 500
+
+        # PDF 文件
+        elif filename.endswith(".pdf"):
+            raw = file.read()
+            reader = PdfReader(io.BytesIO(raw))
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    content += text + "\n"
+            if not content.strip():
+                return jsonify({"error": "未能从 PDF 中提取文字，请尝试粘贴或拍照"}), 400
+
+        # Word 文件
+        elif filename.endswith(".docx"):
+            raw = file.read()
+            doc = Document(io.BytesIO(raw))
+            content = "\n".join(p.text for p in doc.paragraphs)
+            if not content.strip():
+                return jsonify({"error": "Word 文件内容为空"}), 400
+
+        # 纯文本文件
+        elif filename.endswith(".txt"):
+            raw = file.read()
+            content = raw.decode("utf-8", errors="replace")
+
+        else:
+            return jsonify({"error": "不支持的文件格式，请上传 PDF/Word/TXT/图片"}), 400
+
+        if not content.strip() or len(content.strip()) < 20:
+            return jsonify({"error": "提取的文字内容太少，请确认文件包含简历内容"}), 400
+
+        return jsonify({"content": content.strip(), "filename": file.filename})
+
+    except Exception as e:
+        return jsonify({"error": f"文件处理失败: {str(e)}"}), 500
 
 
 @app.route("/api/interview/start", methods=["POST"])
