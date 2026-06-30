@@ -2,7 +2,6 @@
 
 from flask import Flask, render_template, request, jsonify, Response, session
 from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from config import SECRET_KEY, DEBUG
 from utils.deepseek import chat, chat_stream
 from prompts.resume import build_messages as resume_build
@@ -17,9 +16,18 @@ import json
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
+
+# 获取真实客户端 IP（穿透代理/负载均衡）
+def get_real_ip():
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "127.0.0.1"
+
+
 # 请求频率限制（防刷 API 额度）
 limiter = Limiter(
-    get_remote_address,
+    get_real_ip,
     app=app,
     default_limits=["30 per minute"],  # 全局默认
     storage_uri="memory://",

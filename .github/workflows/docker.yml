@@ -28,7 +28,7 @@ jobs:
           push: true
           tags: |
             ghcr.io/luke06-ctrl/ai-job-helper:latest
-            ghcr.io/luke06-ctrl/ai-job-helper:v2
+            ghcr.io/luke06-ctrl/ai-job-helper:v3
 
       - name: Make package public
         run: |
