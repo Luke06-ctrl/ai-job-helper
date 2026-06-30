@@ -756,6 +756,34 @@ textarea:focus, input[type="text"]:focus {
     animation: pulse 1s infinite;
 }
 
+/* ═══════════════ 统计数据 ═══════════════ */
+.stats-section {
+    padding: 40px 0 20px;
+}
+
+.stats-grid {
+    display: flex;
+    justify-content: center;
+    gap: 48px;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-number {
+    display: block;
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--primary);
+    line-height: 1.2;
+}
+
+.stat-label {
+    font-size: .9rem;
+    color: var(--text-secondary);
+}
+
 /* ═══════════════ 历史记录 ═══════════════ */
 .history-list {
     display: flex;

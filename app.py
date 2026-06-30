@@ -55,7 +55,8 @@ def ratelimit_error(e):
 @app.route("/")
 def index():
     """首页"""
-    return render_template("index.html")
+    stats = _get_stats()
+    return render_template("index.html", stats=stats)
 
 
 @app.route("/resume")
@@ -93,6 +94,7 @@ def api_resume_analyze():
 
     messages = resume_build(resume_text, target_job)
     result = chat(messages, temperature=0.6)
+    _increment_stat("resume_count")
     return jsonify({"result": result})
 
 
@@ -212,6 +214,8 @@ def api_interview_answer():
         ])
         messages = build_evaluate_message(history_text)
         result = chat(messages, temperature=0.6)
+
+        _increment_stat("interview_count")
 
         # 清理会话
         session.pop("interview_job", None)
@@ -379,6 +383,25 @@ def api_resume_export():
 
 HISTORY_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(HISTORY_DIR, exist_ok=True)
+
+STATS_FILE = os.path.join(HISTORY_DIR, "stats.json")
+
+
+def _get_stats():
+    """读取统计数据"""
+    if os.path.exists(STATS_FILE):
+        with open(STATS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"resume_count": 0, "interview_count": 0}
+
+
+def _increment_stat(key):
+    """增加统计计数"""
+    stats = _get_stats()
+    stats[key] = stats.get(key, 0) + 1
+    with open(STATS_FILE, "w", encoding="utf-8") as f:
+        json.dump(stats, f, ensure_ascii=False)
+    return stats
 
 
 def _save_history(record):
