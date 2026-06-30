@@ -1,11 +1,8 @@
 """职途星 — AI 大学生就业助手"""
 
 import base64
-import datetime
 import io
 import json
-import os
-import uuid
 
 from flask import Flask, render_template, request, jsonify, Response, session, send_file
 from flask_limiter import Limiter
@@ -13,6 +10,11 @@ from PyPDF2 import PdfReader
 from docx import Document
 from docx.shared import Pt, Inches, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+from utils.db import (
+    init_db, get_stats, increment_stat,
+    save_interview, list_interviews, get_interview,
+)
 
 from config import SECRET_KEY, DEBUG
 from utils.deepseek import chat, chat_stream, ocr_image
@@ -26,6 +28,9 @@ from prompts.career import build_messages as career_build, PRESET_QUESTIONS
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+# 初始化数据库
+init_db()
 
 
 # 获取真实客户端 IP（穿透代理/负载均衡）
@@ -55,7 +60,7 @@ def ratelimit_error(e):
 @app.route("/")
 def index():
     """首页"""
-    stats = _get_stats()
+    stats = get_stats()
     return render_template("index.html", stats=stats)
 
 
@@ -94,7 +99,7 @@ def api_resume_analyze():
 
     messages = resume_build(resume_text, target_job)
     result = chat(messages, temperature=0.6)
-    _increment_stat("resume_count")
+    increment_stat("resume_count")
     return jsonify({"result": result})
 
 
@@ -215,7 +220,7 @@ def api_interview_answer():
         messages = build_evaluate_message(history_text)
         result = chat(messages, temperature=0.6)
 
-        _increment_stat("interview_count")
+        increment_stat("interview_count")
 
         # 清理会话
         session.pop("interview_job", None)
@@ -381,59 +386,11 @@ def api_resume_export():
 
 # ═══════════════ 面试历史记录 ═══════════════
 
-HISTORY_DIR = os.path.join(os.path.dirname(__file__), "data")
-os.makedirs(HISTORY_DIR, exist_ok=True)
-
-STATS_FILE = os.path.join(HISTORY_DIR, "stats.json")
-
-
-def _get_stats():
-    """读取统计数据"""
-    if os.path.exists(STATS_FILE):
-        with open(STATS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"resume_count": 0, "interview_count": 0}
-
-
-def _increment_stat(key):
-    """增加统计计数"""
-    stats = _get_stats()
-    stats[key] = stats.get(key, 0) + 1
-    with open(STATS_FILE, "w", encoding="utf-8") as f:
-        json.dump(stats, f, ensure_ascii=False)
-    return stats
-
-
-def _save_history(record):
-    """保存面试记录到 JSON 文件"""
-    rid = uuid.uuid4().hex[:8]
-    record["id"] = rid
-    record["time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    path = os.path.join(HISTORY_DIR, f"{rid}.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(record, f, ensure_ascii=False, indent=2)
-    return rid
-
-
-def _load_all_history():
-    """加载所有面试历史"""
-    records = []
-    for fname in os.listdir(HISTORY_DIR):
-        if fname.endswith(".json"):
-            path = os.path.join(HISTORY_DIR, fname)
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    records.append(json.load(f))
-            except Exception:
-                pass
-    records.sort(key=lambda r: r.get("time", ""), reverse=True)
-    return records
-
 
 @app.route("/history")
 def history_page():
     """面试历史页"""
-    records = _load_all_history()
+    records = list_interviews()
     return render_template("history.html", records=records, types=INTERVIEW_TYPES)
 
 
@@ -444,35 +401,28 @@ def api_interview_save():
     data = request.get_json()
     job_type = data.get("job_type", "general")
     report = data.get("report", "")
-    feedback = data.get("feedback", "")
 
     if not report:
         return jsonify({"error": "缺少面试报告"}), 400
 
-    record = {
-        "job_type": job_type,
-        "job_name": INTERVIEW_TYPES.get(job_type, {}).get("name", job_type),
-        "report": report,
-        "feedback": feedback,
-    }
-    rid = _save_history(record)
+    job_name = INTERVIEW_TYPES.get(job_type, {}).get("name", job_type)
+    rid = save_interview(job_type, job_name, report)
     return jsonify({"id": rid, "ok": True})
 
 
 @app.route("/api/history/list", methods=["GET"])
 def api_history_list():
     """获取历史记录列表"""
-    return jsonify(_load_all_history())
+    return jsonify(list_interviews())
 
 
 @app.route("/api/history/<hid>", methods=["GET"])
 def api_history_detail(hid):
     """获取单条面试历史"""
-    path = os.path.join(HISTORY_DIR, f"{hid}.json")
-    if not os.path.exists(path):
+    record = get_interview(hid)
+    if not record:
         return jsonify({"error": "记录不存在"}), 404
-    with open(path, "r", encoding="utf-8") as f:
-        return jsonify(json.load(f))
+    return jsonify(record)
 
 
 # ═══════════════ 启动入口 ═══════════════
