@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}职途星 — AI 大学生就业助手{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="nav-logo">🌟 职途星</a>
+            <ul class="nav-links">
+                <li><a href="/resume" class="{% if request.path == '/resume' %}active{% endif %}">📝 简历优化</a></li>
+                <li><a href="/interview" class="{% if request.path == '/interview' %}active{% endif %}">🎤 模拟面试</a></li>
+                <li><a href="/career" class="{% if request.path == '/career' %}active{% endif %}">💡 职业规划</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <p>🌟 职途星 — AI 大学生就业助手 | 2026 年青 AI 天河人工智能协作创新大赛</p>
+        <p class="footer-sub">溯往启新 · 智惠天河</p>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

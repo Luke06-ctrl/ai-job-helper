@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}AI 模拟面试 — 职途星{% endblock %}
+
+{% block content %}
+<div class="container page-container">
+    <div class="page-header">
+        <h1>🎤 AI 模拟面试</h1>
+        <p>选择目标岗位，与 AI 面试官进行多轮真实面试模拟，获取详细评价报告</p>
+    </div>
+
+    <div class="interview-container">
+        <!-- 面试设置区 -->
+        <div id="interviewSetup" class="interview-setup">
+            <h3>选择面试岗位</h3>
+            <div class="job-type-grid">
+                {% for key, info in types.items() %}
+                <button class="job-type-card" data-type="{{ key }}">
+                    <div class="job-type-name">{{ info.name }}</div>
+                    <div class="job-type-hint">
+                        {% if key == 'tech' %}💻{% elif key == 'finance' %}💼{% elif key == 'marketing' %}📢{% else %}🌟{% endif %}
+                    </div>
+                </button>
+                {% endfor %}
+            </div>
+            <button id="startInterviewBtn" class="btn btn-primary btn-lg" disabled>
+                🚀 开始面试
+            </button>
+        </div>
+
+        <!-- 面试对话区 -->
+        <div id="interviewChat" class="interview-chat" style="display:none;">
+            <div class="interview-header">
+                <span id="interviewJobLabel"></span>
+                <span id="interviewRound" class="round-badge"></span>
+            </div>
+            <div id="chatMessages" class="chat-messages"></div>
+            <div class="chat-input-area">
+                <textarea id="answerInput"
+                    placeholder="输入你的回答..."
+                    rows="3"
+                    disabled></textarea>
+                <div class="chat-actions">
+                    <button id="submitAnswerBtn" class="btn btn-primary" disabled>发送回答</button>
+                    <button id="endInterviewBtn" class="btn btn-outline">结束面试</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 评价报告区 -->
+        <div id="interviewReport" class="interview-report" style="display:none;">
+            <div id="reportContent" class="result-content markdown-body"></div>
+            <button id="restartBtn" class="btn btn-primary">🔄 重新开始</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let selectedType = null;
+    let currentRound = 0;
+
+    // 岗位选择
+    document.querySelectorAll('.job-type-card').forEach(card => {
+        card.addEventListener('click', function() {
+            document.querySelectorAll('.job-type-card').forEach(c => c.classList.remove('selected'));
+            this.classList.add('selected');
+            selectedType = this.dataset.type;
+            document.getElementById('startInterviewBtn').disabled = false;
+        });
+    });
+
+    // 开始面试
+    document.getElementById('startInterviewBtn').addEventListener('click', async function() {
+        this.disabled = true;
+        this.textContent = '⏳ 准备中...';
+
+        try {
+            const resp = await fetch('/api/interview/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({job_type: selectedType})
+            });
+            const data = await resp.json();
+
+            if (data.error) { alert(data.error); this.disabled = false; this.textContent = '🚀 开始面试'; return; }
+
+            document.getElementById('interviewSetup').style.display = 'none';
+            document.getElementById('interviewChat').style.display = 'flex';
+            document.getElementById('interviewJobLabel').textContent = '面试岗位：' + data.job_name;
+            document.getElementById('interviewRound').textContent = '第 ' + data.round + ' 轮';
+            currentRound = data.round;
+
+            addMessage('ai', data.result);
+            enableInput();
+        } catch(e) {
+            alert('网络错误：' + e.message);
+            this.disabled = false;
+            this.textContent = '🚀 开始面试';
+        }
+    });
+
+    // 发送回答
+    document.getElementById('submitAnswerBtn').addEventListener('click', sendAnswer);
+    document.getElementById('answerInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && e.ctrlKey) sendAnswer();
+    });
+
+    // 结束面试
+    document.getElementById('endInterviewBtn').addEventListener('click', function() {
+        document.getElementById('answerInput').value = '结束面试';
+        sendAnswer();
+    });
+
+    // 重新开始
+    document.getElementById('restartBtn').addEventListener('click', function() {
+        document.getElementById('interviewChat').style.display = 'none';
+        document.getElementById('interviewReport').style.display = 'none';
+        document.getElementById('interviewSetup').style.display = 'block';
+        document.getElementById('chatMessages').innerHTML = '';
+        document.getElementById('startInterviewBtn').disabled = false;
+        document.getElementById('startInterviewBtn').textContent = '🚀 开始面试';
+        currentRound = 0;
+    });
+
+    async function sendAnswer() {
+        const input = document.getElementById('answerInput');
+        const answer = input.value.trim();
+        if (!answer) return;
+
+        addMessage('user', answer);
+        input.value = '';
+        disableInput();
+        addTyping();
+
+        try {
+            const resp = await fetch('/api/interview/answer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({answer})
+            });
+            const data = await resp.json();
+
+            removeTyping();
+
+            if (data.finished) {
+                document.getElementById('interviewChat').style.display = 'none';
+                document.getElementById('interviewReport').style.display = 'block';
+                document.getElementById('reportContent').innerHTML = marked.parse(data.result);
+            } else {
+                addMessage('ai', data.result);
+                document.getElementById('interviewRound').textContent = '第 ' + data.round + ' 轮';
+                currentRound = data.round;
+                enableInput();
+            }
+        } catch(e) {
+            removeTyping();
+            addMessage('ai', '抱歉，出现了网络错误，请重试。');
+            enableInput();
+        }
+    }
+
+    function addMessage(role, content) {
+        const div = document.createElement('div');
+        div.className = 'chat-message ' + role;
+        div.innerHTML = '<div class="message-bubble">' + marked.parse(content) + '</div>';
+        document.getElementById('chatMessages').appendChild(div);
+        document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+    }
+
+    function addTyping() {
+        const div = document.createElement('div');
+        div.className = 'chat-message ai typing-indicator';
+        div.innerHTML = '<div class="message-bubble"><span></span><span></span><span></span></div>';
+        div.id = 'typingIndicator';
+        document.getElementById('chatMessages').appendChild(div);
+        document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+    }
+
+    function removeTyping() {
+        const el = document.getElementById('typingIndicator');
+        if (el) el.remove();
+    }
+
+    function enableInput() {
+        document.getElementById('answerInput').disabled = false;
+        document.getElementById('submitAnswerBtn').disabled = false;
+        document.getElementById('answerInput').focus();
+    }
+
+    function disableInput() {
+        document.getElementById('answerInput').disabled = true;
+        document.getElementById('submitAnswerBtn').disabled = true;
+    }
+});
+</script>
+{% endblock %}

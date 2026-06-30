@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}职业规划问答 — 职途星{% endblock %}
+
+{% block content %}
+<div class="container page-container">
+    <div class="page-header">
+        <h1>💡 职业规划问答</h1>
+        <p>和 AI 职业顾问自由对话，解答你关于考研、就业、转行、技能提升等所有困惑</p>
+    </div>
+
+    <div class="career-container">
+        <!-- 对话区 -->
+        <div class="career-chat">
+            <div id="careerMessages" class="chat-messages">
+                <div class="chat-message ai">
+                    <div class="message-bubble">
+                        <p>你好！我是你的 AI 职业规划顾问 👋</p>
+                        <p>无论你是对考研还是就业犹豫不决、想了解某个行业的前景、还是需要简历和面试方面的建议，都可以随时问我。</p>
+                        <p>你目前有什么职业方面的困惑吗？</p>
+                    </div>
+                </div>
+            </div>
+            <div id="careerTyping" class="chat-message ai typing-indicator" style="display:none;">
+                <div class="message-bubble"><span></span><span></span><span></span></div>
+            </div>
+            <div class="chat-input-area">
+                <textarea id="careerInput" placeholder="输入你的问题...（如：我该考研还是直接工作？）" rows="2"></textarea>
+                <div class="chat-actions">
+                    <button id="sendCareerBtn" class="btn btn-primary">发送 💬</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 快捷问题 -->
+        <div class="career-presets">
+            <h4>💡 常见问题快速入口</h4>
+            <div class="preset-list">
+                {% for q in presets %}
+                <button class="preset-btn" data-question="{{ q.text }}">
+                    {{ q.icon }} {{ q.text }}
+                </button>
+                {% endfor %}
+            </div>
+            <button id="clearCareerBtn" class="btn btn-outline btn-sm btn-block">🗑 清空对话</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const messagesEl = document.getElementById('careerMessages');
+    const typingEl = document.getElementById('careerTyping');
+    const inputEl = document.getElementById('careerInput');
+    const sendBtn = document.getElementById('sendCareerBtn');
+    const clearBtn = document.getElementById('clearCareerBtn');
+    let chatHistory = [];
+
+    // 发送消息
+    sendBtn.addEventListener('click', sendMessage);
+    inputEl.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    // 快捷问题
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            inputEl.value = this.dataset.question;
+            sendMessage();
+        });
+    });
+
+    // 清空对话
+    clearBtn.addEventListener('click', function() {
+        messagesEl.innerHTML = '';
+        chatHistory = [];
+        // 恢复欢迎消息
+        messagesEl.innerHTML = `<div class="chat-message ai">
+            <div class="message-bubble">
+                <p>你好！我是你的 AI 职业规划顾问 👋</p>
+                <p>无论你是对考研还是就业犹豫不决、想了解某个行业的前景、还是需要简历和面试方面的建议，都可以随时问我。</p>
+                <p>你目前有什么职业方面的困惑吗？</p>
+            </div>
+        </div>`;
+    });
+
+    async function sendMessage() {
+        const question = inputEl.value.trim();
+        if (!question) return;
+
+        // 添加用户消息
+        addMessage('user', question);
+        inputEl.value = '';
+        typingEl.style.display = 'block';
+
+        try {
+            const resp = await fetch('/api/career/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({question, history: chatHistory})
+            });
+            const data = await resp.json();
+
+            typingEl.style.display = 'none';
+
+            if (data.error) {
+                addMessage('ai', '❌ ' + data.error);
+            } else {
+                addMessage('ai', data.result);
+                // 更新历史
+                chatHistory.push(
+                    {role: 'user', content: question},
+                    {role: 'assistant', content: data.result}
+                );
+                // 保持历史在合理长度
+                if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+            }
+        } catch(e) {
+            typingEl.style.display = 'none';
+            addMessage('ai', '❌ 网络错误：' + e.message);
+        }
+    }
+
+    function addMessage(role, content) {
+        const div = document.createElement('div');
+        div.className = 'chat-message ' + role;
+        div.innerHTML = '<div class="message-bubble">' + marked.parse(content) + '</div>';
+        messagesEl.appendChild(div);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+});
+</script>
+{% endblock %}

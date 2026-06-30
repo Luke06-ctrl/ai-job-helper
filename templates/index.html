@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}职途星 — AI 大学生就业助手{% endblock %}
+
+{% block content %}
+<!-- 主视觉区 -->
+<section class="hero">
+    <div class="hero-content">
+        <h1 class="hero-title">🌟 职途星</h1>
+        <p class="hero-subtitle">AI 驱动的大学生就业助手</p>
+        <p class="hero-desc">
+            用人工智能的力量，帮你打磨简历、模拟面试、规划职业方向。<br>
+            让每一位大学生都能自信地走向职场。
+        </p>
+        <div class="hero-cta">
+            <a href="/resume" class="btn btn-primary btn-lg">开始体验 →</a>
+        </div>
+    </div>
+</section>
+
+<!-- 功能卡片 -->
+<section class="features">
+    <div class="container">
+        <h2 class="section-title">三大核心功能</h2>
+        <div class="feature-grid">
+            <a href="/resume" class="feature-card">
+                <div class="feature-icon">📝</div>
+                <h3>智能简历优化</h3>
+                <p>提交你的简历，AI 资深 HR 专家为你提供专业、细致的优化建议。从结构、措辞到亮点提炼，全方位提升简历竞争力。</p>
+                <span class="feature-link">立即体验 →</span>
+            </a>
+            <a href="/interview" class="feature-card">
+                <div class="feature-icon">🎤</div>
+                <h3>AI 模拟面试</h3>
+                <p>选择目标岗位，AI 面试官与你进行多轮真实面试模拟。面试结束后自动生成详细的评价报告和改进建议。</p>
+                <span class="feature-link">开始模拟 →</span>
+            </a>
+            <a href="/career" class="feature-card">
+                <div class="feature-icon">💡</div>
+                <h3>职业规划问答</h3>
+                <p>和 AI 职业顾问自由对话，解答你对考研、就业、转行、技能提升等所有职业发展困惑。</p>
+                <span class="feature-link">聊聊困惑 →</span>
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- 使用流程 -->
+<section class="how-it-works">
+    <div class="container">
+        <h2 class="section-title">三步开启求职之旅</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <h4>输入信息</h4>
+                <p>粘贴简历或选择岗位</p>
+            </div>
+            <div class="step-divider">→</div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <h4>AI 分析</h4>
+                <p>大模型智能处理与反馈</p>
+            </div>
+            <div class="step-divider">→</div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <h4>获得建议</h4>
+                <p>专业详尽的优化方案</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 底部标语 -->
+<section class="tagline">
+    <p>🚀 助力天河高校学子，用 AI 点亮职场未来</p>
+    <p class="tagline-sub">溯往启新 · 智惠天河 · 粤港澳大湾区创新协同发展</p>
+</section>
+{% endblock %}
